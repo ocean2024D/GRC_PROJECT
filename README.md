@@ -81,7 +81,7 @@ The applicability assessment considers the following regulations and standards:
 - **DORA**
 - **SOC 2**
 
-The regulatory applicability is based on the project assumptions and available documentation. In particular, the physical location of the hub and the exact legal entity characteristics are assumptions that may require confirmation.
+The regulatory applicability is based on the project assumptions and available documentation. In particular, the physical location to "NIS2 applicability is established as an Important Entity based on the provided entity facts (Belgian subsidiary of the NVIDIA group); the hub's precise physical siting remains an assumption noted in the limitations.
 
 ---
 
