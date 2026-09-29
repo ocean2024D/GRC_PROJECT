@@ -11,7 +11,7 @@
 
 | ID | Title | Related Check | Rating | $L \times I$ |
 | :--- | :--- | :--- | :--- | :--- |
-| F-01 | Overly Permissive Inbound Edge Firewall Policy (`ALLOW_ALL`) | SEG-02 | Critical | $3 \times 3 = 9$ |
+| F-01 | No Egress Filtering on Server Subnet (`ALLOW_ALL outbound`) | SEG-02 | High | $2 \times 3 = 6$ |
 | F-02 | DMZ Server Farm Terminated on Core Switch SVI Instead of Perimeter Firewall | SEG-03 | Critical | $3 \times 3 = 9$ |
 | F-03 | Defined Inter-VLAN Access Control Lists Not Bound to Switch Virtual Interfaces | SEG-01 | Critical | $3 \times 3 = 9$ |
 | F-04 | Cleartext FTP Protocol Used for Production and AI Data Transfer | DP-03 | High | $2 \times 3 = 6$ |
@@ -27,8 +27,8 @@
 | F-14 | Supplier Security Criteria Omitted from Procurement Documentation | SUP-01 | Low | $2 \times 1 = 2$ |
 | F-15 | Unassigned Policy Ownership and Incomplete Formal Asset Inventory | GOV-01 | Low | $2 \times 1 = 2$ |
 
-* **Critical:** 3
-* **High:** 6
+* **Critical:** 2
+* **High:** 7
 * **Medium:** 4
 * **Low:** 2
 
@@ -36,15 +36,15 @@
 
 ## Detailed Findings
 
-### F-01: Overly Permissive Inbound Edge Firewall Policy (`ALLOW_ALL`)
+### F-01: No Egress Filtering on the Server Subnet
 * **Related Check:** SEG-02
-* **Rating:** Critical ($L \times I = 9$)
-* **Observation:** The Cisco ASA perimeter firewall configuration defines and applies an unrestricted inbound access list to the inside interface: `access-list ALLOW_ALL extended permit ip 192.168.100.0 255.255.255.0 any` and `access-group ALLOW_ALL in interface inside`. This rule permits all IP traffic originating from the internal server network to traverse without stateful inspection or least-privilege filtering.
-* **Evidence:** `firewall-config.txt`, lines 39-44.
-* **Reference:** ISO/IEC 27001:2022 Annex A 8.20/8.22; CyFun 2025 PR.IR-01. Underlying requirement: Belgian NIS2 Act/NIS2 Art. 21(2)(a).
-* **Risk:** NVIDIA's central AAA/RADIUS server (`192.168.100.4`) and DNS/DHCP server (`192.168.100.3`) within VLAN 100 are exposed to unfiltered lateral and external threats. A breach in any internal sector will bypass perimeter defense entirely, directly compromising the high-performance AI production infrastructure in VLAN 30 and critical intellectual property (IP) data.
-* **Recommendation:** Replace the `ALLOW_ALL` access group and rule set on the Cisco ASA firewall with granular, stateful inspection rules that strictly permit only required business protocols.
-* **Priority:** Immediate (pre-cutover prerequisite with zero hardware cost, well within the 300,000 EUR budget ceiling).
+* **Rating:** High ($L \times I = 6$)
+* **Observation:** The Cisco ASA applies `access-group ALLOW_ALL in interface inside`. The rule `permit ip 192.168.100.0 255.255.255.0 any` allows the server subnet to send traffic to any destination. Because it is applied inbound on the inside interface, it governs traffic leaving the internal network, not traffic arriving from the Internet — the ASA still denies unsolicited inbound from `outside` by default.
+* **Evidence:** `firewall-config.txt` (the `ALLOW_ALL` access-list and its `access-group ... in interface inside`).
+* **Reference:** ISO/IEC 27001:2022 Annex A 8.20/8.22; CyFun 2025 PR.IR-01. Underlying requirement: Belgian NIS2 Act / NIS2 Art. 21(2)(a).
+* **Risk:** There is no egress filtering from the server subnet (VLAN 100). This does not expose the AAA/DNS servers to the Internet — inbound is blocked. The risk is outbound: if a server is compromised by another route, nothing restricts it from exfiltrating data (Production R&D/AI data) or reaching an external command-and-control host. Likelihood is Medium (2) because it requires a prior foothold on a server; impact is High (3) because the data at stake is the site's most sensitive.
+* **Recommendation:** Replace `ALLOW_ALL` with an egress rule set that permits only the destinations and protocols the servers legitimately need, and denies the rest.
+* **Priority:** High — pre-cutover, zero hardware cost.
 
 ---
 
@@ -52,7 +52,7 @@
 * **Related Check:** SEG-03
 * **Rating:** Critical ($L \times I = 9$)
 * **Observation:** The Application and FTP server residing in the DMZ (VLAN 200, subnet `192.168.200.0/24`) are physically and logically connected to the central Cisco Catalyst 3560 Multilayer Switch (`interface GigabitEthernet1/0/9 switchport access vlan 200`) rather than terminating on a dedicated physical interface of the Cisco ASA edge firewall.
-* **Evidence:** `Network_Analysis.pdf` §VI, pp. 6-7 / `core-switch-config.txt`, lines 52-54.
+* **Evidence:** `Network_Analysis.pdf` §VI, pp. 6-7 / `core-switch-config.txt`, lines 74-76.
 * **Reference:** ISO/IEC 27001:2022 Annex A 8.22; CyFun 2025 PR.IR-01. Underlying requirement: Belgian NIS2 Act / NIS2 Art. 21(2)(a).
 * **Risk:** Public-facing services requiring internet accessibility bypass hardware firewall boundary mediation. Compromise of the DMZ application server grants direct Layer 3 routing access into the internal core network via the multilayer switch SVIs, completely invalidating the security isolation expected of a true Demilitarized Zone.
 * **Recommendation:** Re-architect the perimeter topology to physically or logically terminate the DMZ segment on a dedicated interface (e.g., `GigabitEthernet1/3`) of the Cisco ASA 5506-X firewall.
@@ -67,7 +67,7 @@
 * **Evidence:** `core-switch-config.txt`, lines 65-150.
 * **Reference:** ISO/IEC 27001:2022 Annex A 8.22; CyFun 2025 PR.IR-01; CIS Controls v8 Control 12. Underlying requirement: Belgian NIS2 Act / NIS2 Art. 21(2)(a).
 * **Risk:** Although the filtering logic is written in the device configuration, it remains entirely inactive. Consequently, zero-trust departmental segmentation between functional sectors—specifically protecting the Production high-end AI workstations (VLAN 30) from standard support and management VLANs—is not enforced at Layer 3, permitting unrestricted lateral movement across internal subnets.
-* **Recommendation:** Bind each departmental ACL to its respective SVI on the core multilayer switch using the appropriate command syntax (e.g., `ip access-group ACL-PRODUCTION-IN in`).
+* **Recommendation:** Bind each departmental ACL to its SVI (e.g. `ip access-group ACL-PRODUCTION-IN in`), then test the allowed and denied flows before go-live — confirm DHCP, DNS and RADIUS still work, and that cross-VLAN traffic that should be blocked actually is. Binding untested ACLs can break core services on day one, so bind, test, then cut over.
 * **Priority:** Immediate (zero-cost configuration fix with no hardware dependency).
 
 ---
