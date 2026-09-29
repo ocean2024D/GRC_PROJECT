@@ -18,8 +18,8 @@ $$\text{Risk} = \text{Likelihood} \times \text{Impact}$$ (each rated on a scale 
 | **2 - Med** | Partial control, or attacker needs a foothold | **2 - Med** | One sector or one service |
 | **1 - Low** | Several conditions align, or insider access | **1 - Low** | Limited, easily recovered |
 
-* **High:** 6
-* **Critical:** 3
+* **Critical:** 2
+* **High:** 7
 * **Medium:** 4
 * **Low:** 2
 
@@ -33,9 +33,9 @@ $$\text{Risk} = \text{Likelihood} \times \text{Impact}$$ (each rated on a scale 
 
 | # | ID | Finding | Check | Area | L | I | Score | Rating | Regulation (via control) | Cost |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | F-01 | Overly permissive inbound edge firewall policy (`ALLOW_ALL`) | SEG-02 | Segmentation | 3 | 3 | 9 | Critical | NIS2 21(2)(a) / ISO A.8.20/8.22 / CyFun PR.IR-01 | Zero (config) |
-| 2 | F-02 | DMZ server farm terminated on core-switch SVI, not the firewall | SEG-03 | Segmentation | 3 | 3 | 9 | Critical | NIS2 21(2)(a) / ISO A.8.22 / CyFun PR.IR-01 | Zero (re-cable) |
-| 3 | F-03 | Inter-VLAN isolation ACLs defined but not bound to SVIs | SEG-01 | Segmentation | 3 | 3 | 9 | Critical | NIS2 21(2)(a) / ISO A.8.22 / CyFun PR.IR-01 / CIS 12 | Zero (config) |
+| 1 | F-02 | DMZ server farm terminated on core-switch SVI, not the firewall | SEG-03 | Segmentation | 3 | 3 | 9 | Critical | NIS2 21(2)(a) / ISO A.8.22 / CyFun PR.IR-01 | Zero (re-cable) |
+| 2 | F-03 | Inter-VLAN isolation ACLs defined but not bound to SVIs | SEG-01 | Segmentation | 3 | 3 | 9 | Critical | NIS2 21(2)(a) / ISO A.8.22 / CyFun PR.IR-01 / CIS 12 | Zero (config) |
+| 3 | F-01 | No egress filtering on server subnet (ALLOW_ALL outbound) | SEG-02 | Segmentation | 2 | 3 | 6 | High | NIS2 21(2)(a) / ISO A.8.20/8.22 / CyFun PR.IR-01 | Zero (config) |
 | 4 | F-04 | Cleartext FTP used for production and AI data transfer | DP-03 | Data Protection | 2 | 3 | 6 | High | GDPR 32 / ISO A.8.24 / CyFun PR.DS-02 / CIS 3 | Zero (SFTP/FTPS) |
 | 5 | F-05 | Weak RADIUS shared secret and non-unique admin credentials | AC-01 | Access Control | 2 | 3 | 6 | High | NIS2 21(2)(i) / ISO A.8.5 / CyFun PR.AA-01 / CIS 4/5 | Zero (config) |
 | 6 | F-06 | Global password encryption disabled on network devices | DP-02 | Data Protection | 2 | 3 | 6 | High | GDPR 32 / NIS2 21(2)(h) / ISO A.8.24 / CyFun PR.DS-01/02 | Zero (config) |
@@ -50,21 +50,18 @@ $$\text{Risk} = \text{Likelihood} \times \text{Impact}$$ (each rated on a scale 
 | 15 | F-15 | Unassigned policy ownership; incomplete asset inventory | GOV-01 | Governance | 2 | 1 | 2 | Low | NIS2 21(2)(f) / GDPR 30 / ISO A.5.1/5.9 / CyFun ID.AM-01/GV.RR-01 | Zero (governance) |
 
 ### Ordering Rationale
-* **Equal Scores Ordering:** Within equal scores, the three Critical segmentation findings lead because they compound segmentation failures (allowing a single breach to reach everything).
-* **High Scores Ordering:** Among the score-6 findings, standing-exposure items (F-08, F-09) sit just below the foothold-required credential/data items because:
-  * **F-01** removes the perimeter filter.
-  * **F-02** places public services directly in the trusted core.
-  * **F-03** removes internal boundaries.
+* **Critical findings first:** The two Critical findings (F-02, F-03) lead the register. Both are segmentation failures that let a single breach reach across zones, and both protect or expose the most sensitive data on the site (Production VLAN 30).
+* **Within equal scores:** Among the score-6 findings, F-01 (no egress filtering) is placed at the top of the High band because it directly concerns the server subnet and the exfiltration of Production data once a foothold exists. Standing-exposure items follow, with governance and continuity items lower where a precondition or a slower impact applies.
 
 ---
 
 ## Top Three Priorities
 
-1. **F-01 (`ALLOW_ALL` Firewall Rule):** The perimeter enforces nothing; the Cisco ASA operates as an unfiltered high-speed pipe. This is a zero-cost configuration fix and stands as the clearest "fix before go-live" requirement.
-2. **F-03 (Unbound Inter-VLAN ACLs):** The network segmentation advertised in design documentation is written but left entirely inert. Consequently, Production's AI/R&D data (VLAN 30) is not actually isolated. This exemplifies the documented-versus-implemented gap and requires zero cost to fix.
-3. **F-02 (DMZ on Core Switch):** Public-facing services sit inside the trusted core instead of behind a dedicated firewall interface, meaning compromise of the web/FTP server routes straight into the internal network.
+1. **F-03 (Unbound Inter-VLAN ACLs):** The network segmentation advertised in the design is written but left entirely inert, so Production's AI/R&D data (VLAN 30) is not actually isolated. This exemplifies the documented-versus-implemented gap and is zero-cost to fix — bind the ACLs, then test the allowed and denied flows before go-live.
+2. **F-02 (DMZ on Core Switch):** Public-facing services sit inside the trusted core instead of behind a dedicated firewall interface, meaning compromise of the web/FTP server routes straight into the internal network.
+3. **F-09 (Remote VPN without MFA):** Chosen third because the no-MFA VPN is the most likely entry point in the attack chain — closing it cuts off how an attacker gets in before the other weaknesses can be reached.
 
-*All three priorities are Critical, essentially free to remediate, and must be closed prior to system cutover.*
+*All three must be closed before go-live; F-03 and F-02 are Critical, and F-09 addresses the most likely entry point.*
 
 ---
 
